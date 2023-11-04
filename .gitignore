@@ -1,0 +1,5 @@
+build/
+dist/
+toymath.egg-info/
+venv/
+CMakeLists.txt.user

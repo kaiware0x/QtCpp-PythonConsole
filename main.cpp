@@ -1,22 +1,20 @@
-#include <Python.h>
-
-#include <QApplication>
 
 #include "MainWindow.h"
 
-int main(int argc, char *argv[]) {
-  QApplication a(argc, argv);
-  MainWindow w;
-  w.show();
+#include <QApplication>
+#include <iostream>
 
-  // Initialize the Python interpreter
-  Py_Initialize();
+namespace py = pybind11;
 
-  // Execute some Python code
-  PyRun_SimpleString("print('Hello from Python-C API!')");
+int main(int argc, char *argv[])
+{
+    Py_UnbufferedStdioFlag = 1;    // 標準入出力のバッファリングを無効にする
 
-  // Finalize the Python interpreter
-  Py_Finalize();
+    QApplication app(argc, argv);
 
-  return a.exec();
+    MainWindow w;
+    w.show();
+
+    app.exec();
+    return 0;
 }
