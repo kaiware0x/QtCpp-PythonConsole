@@ -3,18 +3,13 @@
 
 /// QtとPythonでマクロ slots の名前が競合しているので回避
 /// https://stackoverflow.com/questions/23068700/embedding-python3-in-qt-5
-#pragma push_macro("slots")
-#undef slots
-#include <pybind11/embed.h>    // pybind11の埋め込み機能を使用するために必要
-#include <pybind11/pybind11.h>
-namespace py = pybind11;
-#pragma pop_macro("slots")
 
+#include "IncludePybind11.h"
 #include "PythonConsoleHistory.h"
 #include "PythonSyntaxHighlighter.h"
 #include "TextEdit.h"
 
-class Logger;
+class PythonConsoleHighlighter;
 
 class PythonConsole : public TextEdit {
 public:
@@ -29,27 +24,31 @@ private:
     void        overrideCursor(const QString& txt);
     void        insertPrompt();
     QTextCursor inputBegin() const;
-    void        runSource(QString line);
-    void        printPrompt(Prompt mode);
-    void        printStatement(const QString& cmd);
+    void        runSource(const QString& line);
     void        appendOutput(const QString& output, int state);
-    void        appendOutput(const std::string& output, const bool is_error = false);
+    void        appendOutput(const std::string& output, const int output_state);
 
-    void setInputFormat();
-    void setOutputFormat();
-    void setErrorFormat();
+    //    void setInputFormat();
+    //    void setOutputFormat();
+    //    void setErrorFormat();
 
 Q_SIGNALS:
     void pendingSource();
 
 private:
+    struct PythonConsoleP* d;
+
     std::unique_ptr<py::scoped_interpreter> m_interpreter;
     py::module_                             m_sys;
 
     QString* _sourceDrain = nullptr;
     QString  _historyFile;
 
+    PythonConsoleHighlighter* pythonSyntax;
+
     PythonConsoleHistory m_history;
+
+    int m_font_size{10};
 };
 
 /**
@@ -64,7 +63,7 @@ public:
     void highlightBlock(const QString& text) override;
 
 protected:
-    void colorChanged(const QString& type, const QColor& col) override;
+    void colorChanged(const QString& type, const QColor& col) override {}
 };
 
 #endif    // PYTHONCONSOLE_H

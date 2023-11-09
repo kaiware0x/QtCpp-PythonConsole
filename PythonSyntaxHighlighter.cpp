@@ -18,10 +18,27 @@ public:
         cDefineName.setRgb(255, 170, 0);
         cOutput.setRgb(170, 170, 127);
         cError.setRgb(255, 0, 0);
+
+        colormap[QLatin1String("Text")]          = cNormalText;
+        colormap[QLatin1String("Bookmark")]      = Qt::cyan;
+        colormap[QLatin1String("Breakpoint")]    = Qt::red;
+        colormap[QLatin1String("Keyword")]       = cKeyword;
+        colormap[QLatin1String("Comment")]       = cComment;
+        colormap[QLatin1String("Block comment")] = cBlockcomment;
+        colormap[QLatin1String("Number")]        = cNumber;
+        colormap[QLatin1String("String")]        = cLiteral;
+        colormap[QLatin1String("Character")]     = cLiteral;
+        colormap[QLatin1String("Class name")]    = cClassName;
+        colormap[QLatin1String("Define name")]   = cDefineName;
+        colormap[QLatin1String("Operator")]      = cOperator;
+        colormap[QLatin1String("Python output")] = cOutput;
+        colormap[QLatin1String("Python error")]  = cError;
     }
 
     QColor cNormalText, cComment, cBlockcomment, cLiteral, cNumber, cOperator, cKeyword, cClassName, cDefineName,
         cOutput, cError;
+
+    QMap<QString, QColor> colormap;
 };
 
 /**
@@ -42,12 +59,18 @@ SyntaxHighlighter::~SyntaxHighlighter()
  * This method is provided for convenience to specify the paragraph type
  * by its name.
  */
+/*
 void SyntaxHighlighter::setColor(const QString& type, const QColor& col)
 {
     // Rehighlighting is very expensive, thus avoid it if this color is already set
     QColor old = color(type);
-    if (!old.isValid()) return;    // no such type
-    if (old == col) return;
+    if (!old.isValid()) {
+        return;    // no such type
+    }
+    if (old == col) {
+        return;
+    }
+
     if (type == QLatin1String("Text"))
         d->cNormalText = col;
     else if (type == QLatin1String("Comment"))
@@ -72,33 +95,38 @@ void SyntaxHighlighter::setColor(const QString& type, const QColor& col)
         d->cError = col;
     colorChanged(type, col);
 }
+*/
 
 QColor SyntaxHighlighter::color(const QString& type)
 {
-    if (type == QLatin1String("Text"))
-        return d->cNormalText;
-    else if (type == QLatin1String("Comment"))
-        return d->cComment;
-    else if (type == QLatin1String("Block comment"))
-        return d->cBlockcomment;
-    else if (type == QLatin1String("Number"))
-        return d->cNumber;
-    else if (type == QLatin1String("String"))
-        return d->cLiteral;
-    else if (type == QLatin1String("Keyword"))
-        return d->cKeyword;
-    else if (type == QLatin1String("Class name"))
-        return d->cClassName;
-    else if (type == QLatin1String("Define name"))
-        return d->cDefineName;
-    else if (type == QLatin1String("Operator"))
-        return d->cOperator;
-    else if (type == QLatin1String("Python output"))
-        return d->cOutput;
-    else if (type == QLatin1String("Python error"))
-        return d->cError;
-    else
-        return QColor();    // not found
+    return d->colormap.value(type, QColor());
+
+    /*
+        if (type == QLatin1String("Text"))
+            return d->cNormalText;
+        else if (type == QLatin1String("Comment"))
+            return d->cComment;
+        else if (type == QLatin1String("Block comment"))
+            return d->cBlockcomment;
+        else if (type == QLatin1String("Number"))
+            return d->cNumber;
+        else if (type == QLatin1String("String"))
+            return d->cLiteral;
+        else if (type == QLatin1String("Keyword"))
+            return d->cKeyword;
+        else if (type == QLatin1String("Class name"))
+            return d->cClassName;
+        else if (type == QLatin1String("Define name"))
+            return d->cDefineName;
+        else if (type == QLatin1String("Operator"))
+            return d->cOperator;
+        else if (type == QLatin1String("Python output"))
+            return d->cOutput;
+        else if (type == QLatin1String("Python error"))
+            return d->cError;
+        else
+            return QColor();    // not found
+        */
 }
 
 QColor SyntaxHighlighter::colorByType(SyntaxHighlighter::TColor type)
@@ -185,18 +213,20 @@ void PythonSyntaxHighlighter::highlightBlock(const QString& text)
     int   i = 0;
     QChar prev, ch;
 
-    const int Standard      = 0;    // Standard text
-    const int Digit         = 1;    // Digits
-    const int Comment       = 2;    // Comment begins with #
-    const int Literal1      = 3;    // String literal beginning with "
-    const int Literal2      = 4;    // Other string literal beginning with '
-    const int Blockcomment1 = 5;    // Block comments beginning and ending with """
-    const int Blockcomment2 = 6;    // Other block comments beginning and ending with '''
-    const int ClassName     = 7;    // Text after the keyword class
-    const int DefineName    = 8;    // Text after the keyword def
+    constexpr int Standard      = 0;    // Standard text
+    constexpr int Digit         = 1;    // Digits
+    constexpr int Comment       = 2;    // Comment begins with #
+    constexpr int Literal1      = 3;    // String literal beginning with "
+    constexpr int Literal2      = 4;    // Other string literal beginning with '
+    constexpr int Blockcomment1 = 5;    // Block comments beginning and ending with """
+    constexpr int Blockcomment2 = 6;    // Other block comments beginning and ending with '''
+    constexpr int ClassName     = 7;    // Text after the keyword class
+    constexpr int DefineName    = 8;    // Text after the keyword def
 
     int endStateOfLastPara = previousBlockState();
-    if (endStateOfLastPara < 0 || endStateOfLastPara > maximumUserState()) endStateOfLastPara = Standard;
+    if (endStateOfLastPara < 0 || endStateOfLastPara > maximumUserState()) {
+        endStateOfLastPara = Standard;
+    }
 
     while (i < text.length()) {
         ch = text.at(i);

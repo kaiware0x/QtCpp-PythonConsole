@@ -9,8 +9,12 @@ FreeCADの`PythonConsole`クラスを参考にしている。
 - Qt
 - pybind11
 
-
 ## 進捗
+
+### 2023-11-07
+
+- SyntaxHighlightを実装した。
+- 入力補完実装中。
 
 ### 2023-11-04
 

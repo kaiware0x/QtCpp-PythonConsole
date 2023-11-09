@@ -53,7 +53,8 @@ function(my_link_python target)
 endfunction()
 
 
-# CMAKE_TOOLCHAIN_FILE=C:/vcpkg/vcpkg/scripts/buildsystems/vcpkg.cmake
+# You must this argument to cmake configure command if you installed pybind11 by vcpkg.
+# -DCMAKE_TOOLCHAIN_FILE=C:/vcpkg/vcpkg/scripts/buildsystems/vcpkg.cmake
 function(my_link_pybind11_embed target)
     find_package(pybind11 CONFIG REQUIRED)
     target_link_libraries(${target} PRIVATE pybind11::embed)

@@ -18,7 +18,7 @@ public:
 
     int maximumUserState() const;
 
-    void   setColor(const QString& type, const QColor& col);
+    //    void   setColor(const QString& type, const QColor& col);
     QColor color(const QString& type);
 
 protected:
