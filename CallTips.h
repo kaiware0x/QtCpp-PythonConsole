@@ -2,6 +2,8 @@
 #ifndef GUI_CALLTIPS_H
 #define GUI_CALLTIPS_H
 
+#include "IncludePybind11.h"
+
 #include <QListWidget>
 
 class QPlainTextEdit;
@@ -43,9 +45,9 @@ private Q_SLOTS:
 private:
     QString                extractContext(const QString &) const;
     QMap<QString, CallTip> extractTips(const QString &) const;
-    //    void                   extractTipsFromObject(Py::Object &, Py::List &, QMap<QString, CallTip> &) const;
-    //    void extractTipsFromProperties(Py::Object&, QMap<QString, CallTip>&) const;
-    QString stripWhiteSpace(const QString &) const;
+    void                   extractTipsFromObject(py::object &obj, const pybind11::list &list, QMap<QString, CallTip> &tips) const;
+    void                   extractTipsFromProperties(py::object &obj, QMap<QString, CallTip> &tips) const;
+    QString                stripWhiteSpace(const QString &) const;
 
 private:
     QPlainTextEdit *textEdit;

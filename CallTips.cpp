@@ -7,8 +7,13 @@
 #include <QRegularExpressionMatch>
 #include <QTextCursor>
 #include <QToolTip>
+#include <iostream>
+// #include "BitmapFactory.h"
 #include "BitmapFactory.h"
 #include "IncludePybind11.h"
+
+#include "defines.h"
+#include "pyutil.h"
 
 /**
  * template class Temporary.
@@ -149,281 +154,168 @@ QMap<QString, CallTip> CallTipsList::extractTips(const QString& context) const
     if (context.isEmpty()) return tips;
 
     try {
-        //        Py::Module module("__main__");
-        //        Py::Dict   dict = module.getDict();
-
-        auto dict = py::globals();
+        auto global_dict = py::globals();
+        pyutil::printDict(global_dict);
 
         // this is used to filter out input of the form "1."
-        QStringList items       = context.split(QLatin1Char('.'));
-        QString     modname     = items.front();
-        const auto  modname_std = std::string(modname.toLatin1());
-        items.pop_front();
+        QStringList   words           = context.split(QLatin1Char('.'));
+        const QString module_name     = words.front();
+        const auto    module_name_std = std::string(module_name.toLatin1());
+        words.pop_front();
 
         // unknown object
-        if (!dict.contains(modname_std)) {
+        if (!global_dict.contains(module_name_std)) {
             return tips;
         }
+
+        pyutil::printType(global_dict[module_name_std.c_str()]);
+        pyutil::printAttr(global_dict[module_name_std.c_str()]);
 
         /// TODO: 以下のソースをpybind11で書き換える.
 
-        auto ret = py::eval(context.toLatin1().constData());
-
-        // Don't use hasattr & getattr because if a property is bound to a method this will be executed twice.
-        PyObject* code =
-            Py_CompileString(static_cast<const char*>(context.toLatin1()), "<CallTipsList>", Py_eval_input);
-        if (!code) {
-            PyErr_Clear();
+        auto obj = py::eval(context.toLatin1().constData());
+        if (obj.is_none()) {
             return tips;
-        }
-
-        PyObject* eval = nullptr;
-        if (PyCode_Check(code)) {
-            eval = PyEval_EvalCode(code, dict.ptr(), dict.ptr());
-        }
-        Py_DECREF(code);
-        if (!eval) {
-            PyErr_Clear();
-            return tips;
-        }
-        Py::Object obj(eval, true);
-
-        // Checks whether the type is a subclass of PyObjectBase because to get the doc string
-        // of a member we must get it by its type instead of its instance otherwise we get the
-        // wrong string, namely that of the type of the member.
-        // Note: 3rd party libraries may use their own type object classes so that we cannot
-        // reliably use Py::Type. To be on the safe side we should use Py::Object to assign
-        // the used type object to.
-        // Py::Object type = obj.type();
-        Py::Object type(PyObject_Type(obj.ptr()), true);
-        Py::Object inst     = obj;    // the object instance
-        PyObject*  typeobj  = Base::getTypeAsObject(&Base::PyObjectBase::Type);
-        PyObject*  typedoc  = Base::getTypeAsObject(&App::DocumentObjectPy::Type);
-        PyObject*  basetype = Base::getTypeAsObject(&PyBaseObject_Type);
-
-        if (PyObject_IsSubclass(type.ptr(), typedoc) == 1) {
-            // From the template Python object we don't query its type object because there we keep
-            // a list of additional methods that we won't see otherwise. But to get the correct doc
-            // strings we query the type's dict in the class itself.
-            // To see if we have a template Python object we check for the existence of '__fc_template__'
-            // See also: FeaturePythonPyT
-            if (!obj.hasAttr("__fc_template__")) {
-                obj = type;
-            }
-        }
-        else if (PyObject_IsSubclass(type.ptr(), typeobj) == 1) {
-            obj = type;
-        }
-        else if (PyObject_IsInstance(obj.ptr(), basetype) == 1) {
-            // New style class which can be a module, type, list, tuple, int, float, ...
-            // Make sure it's not a type object
-            PyObject* typetype = Base::getTypeAsObject(&PyType_Type);
-            if (PyObject_IsInstance(obj.ptr(), typetype) != 1) {
-                // For wrapped objects with PySide2 use the object, not its type
-                // as otherwise attributes added at runtime won't be listed (e.g. MainWindowPy)
-                QString typestr(QLatin1String(Py_TYPE(obj.ptr())->tp_name));
-
-            // this should be now a user-defined Python class
-            //
-            http:    // stackoverflow.com/questions/12233103/in-python-at-runtime-determine-if-an-object-is-a-class-old-and-new-type-instan
-                if (!typestr.startsWith(QLatin1String("PySide"))
-                    && Py_TYPE(obj.ptr())->tp_flags & Py_TPFLAGS_HEAPTYPE) {
-                    obj = type;
-                }
-            }
-        }
-
-        // If we have an instance of PyObjectBase then determine whether it's valid or not
-        if (PyObject_IsInstance(inst.ptr(), typeobj) == 1) {
-            auto baseobj = static_cast<Base::PyObjectBase*>(inst.ptr());
-            validObject  = baseobj->isValid();
-        }
-        else {
-            // PyObject_IsInstance might set an exception
-            PyErr_Clear();
-        }
-
-        Py::List list(obj.dir());
-
-        // If we derive from PropertyContainerPy we can search for the properties in the
-        // C++ twin class.
-        PyObject* proptypeobj = Base::getTypeAsObject(&App::PropertyContainerPy::Type);
-        if (PyObject_IsSubclass(type.ptr(), proptypeobj) == 1) {
-            // These are the attributes of the instance itself which are NOT accessible by
-            // its type object
-            extractTipsFromProperties(inst, tips);
-        }
-
-        // If we derive from App::DocumentPy we have direct access to the objects by their internal
-        // names. So, we add these names to the list, too.
-        PyObject* appdoctypeobj = Base::getTypeAsObject(&App::DocumentPy::Type);
-        if (PyObject_IsSubclass(type.ptr(), appdoctypeobj) == 1) {
-            auto docpy    = static_cast<App::DocumentPy*>(inst.ptr());
-            auto document = docpy->getDocumentPtr();
-            // Make sure that the C++ object is alive
-            if (document) {
-                std::vector<App::DocumentObject*> objects = document->getObjects();
-                Py::List                          list;
-                for (const auto& object : objects)
-                    list.append(Py::String(object->getNameInDocument()));
-                extractTipsFromObject(inst, list, tips);
-            }
-        }
-
-        // If we derive from Gui::DocumentPy we have direct access to the objects by their internal
-        // names. So, we add these names to the list, too.
-        PyObject* guidoctypeobj = Base::getTypeAsObject(&Gui::DocumentPy::Type);
-        if (PyObject_IsSubclass(type.ptr(), guidoctypeobj) == 1) {
-            auto docpy = static_cast<Gui::DocumentPy*>(inst.ptr());
-            if (docpy->getDocumentPtr()) {
-                App::Document* document = docpy->getDocumentPtr()->getDocument();
-                // Make sure that the C++ object is alive
-                if (document) {
-                    std::vector<App::DocumentObject*> objects = document->getObjects();
-                    Py::List                          list;
-                    for (const auto& object : objects)
-                        list.append(Py::String(object->getNameInDocument()));
-                    extractTipsFromObject(inst, list, tips);
-                }
-            }
         }
 
         // These are the attributes from the type object
-        extractTipsFromObject(obj, list, tips);
+        extractTipsFromObject(obj, pyutil::getAllAttr(obj), tips);
     }
-    catch (Py::Exception& e) {
-        // Just clear the Python exception
-        e.clear();
+    catch (py::error_already_set e) {
+        std::cout << e.what() << std::endl;
+    }
+    catch (std::exception e) {
+        std::cout << e.what() << std::endl;
+    }
+    catch (...) {
+        std::cout << "... error" << std::endl;
     }
 
     return tips;
 }
 
-// void CallTipsList::extractTipsFromObject(Py::Object& obj, Py::List& list, QMap<QString, CallTip>& tips) const
-//{
-//     for (Py::List::iterator it = list.begin(); it != list.end(); ++it) {
-//         try {
-//             Py::String  attrname(*it);
-//             std::string name = attrname.as_string();
+void CallTipsList::extractTipsFromObject(py::object& obj, const py::list& list, QMap<QString, CallTip>& tips) const
+{
+    for (auto&& item : list) {
+        try {
+            auto attrname_opt = pyutil::toStdStr(item);
+            if (!attrname_opt.has_value()) {
+                continue;
+            }
+            const std::string attrname_std = attrname_opt.value();
 
-//            // If 'name' is an invalid attribute then PyCXX raises an exception
-//            // for Py2 but silently accepts it for Py3.
-//            //
-//            // FIXME: Add methods of extension to the current instance and not its type object
-//            // https://forum.freecad.org/viewtopic.php?f=22&t=18105
-//            // https://forum.freecad.org/viewtopic.php?f=3&t=20009&p=154447#p154447
-//            // https://forum.freecad.org/viewtopic.php?f=10&t=12534&p=155290#p155290
-//            //
-//            // https://forum.freecad.org/viewtopic.php?f=39&t=33874&p=286759#p286759
-//            // https://forum.freecad.org/viewtopic.php?f=39&t=33874&start=30#p286772
-//            Py::Object attr = obj.getAttr(name);
-//            if (!attr.ptr()) {
-//                Base::Console().Log("Python attribute '%s' returns null!\n", name.c_str());
-//                continue;
-//            }
+            py::object attr = pyutil::getAttr(obj, attrname_std);
+            if (attr.is_none()) {
+                WARNLOG << "Python attriute is None." << VAROUT(attrname_std);
+                continue;
+            }
 
-//            CallTip tip;
-//            QString str = QString::fromLatin1(name.c_str());
-//            tip.name    = str;
+            CallTip tip;
+            QString attrname_qstr = QString::fromLatin1(attrname_std.c_str());
+            tip.name              = attrname_qstr;
 
-//            if (attr.isCallable()) {
-//                PyObject* basetype = Base::getTypeAsObject(&PyBaseObject_Type);
-//                if (PyObject_IsSubclass(attr.ptr(), basetype) == 1) {
-//                    tip.type = CallTip::Class;
-//                }
-//                else {
-//                    PyErr_Clear();    // PyObject_IsSubclass might set an exception
-//                    tip.type = CallTip::Method;
-//                }
-//            }
-//            else if (PyModule_Check(attr.ptr())) {
-//                tip.type = CallTip::Module;
-//            }
-//            else {
-//                tip.type = CallTip::Member;
-//            }
+            if (pyutil::isCallable(attr)) {
+                if (pyutil::isClassInstance(attr)) {
+                    tip.type = CallTip::Class;
+                }
+                else {
+                    tip.type = CallTip::Method;
+                }
+            }
+            else if (PyModule_Check(attr.ptr())) {
+                tip.type = CallTip::Module;
+            }
+            else {
+                tip.type = CallTip::Member;
+            }
 
-//            if (str == QLatin1String("__doc__") && attr.isString()) {
-//                Py::Object help = attr;
-//                if (help.isString()) {
-//                    Py::String doc(help);
-//                    QString    longdoc = QString::fromUtf8(doc.as_string().c_str());
-//                    int        pos     = longdoc.indexOf(QLatin1Char('\n'));
-//                    pos                = qMin(pos, 70);
-//                    if (pos < 0) pos = qMin(longdoc.length(), 70);
-//                    tip.description = stripWhiteSpace(longdoc);
-//                    tip.parameter   = longdoc.left(pos);
-//                }
-//            }
-//            else if (attr.hasAttr("__doc__")) {
-//                Py::Object help = attr.getAttr("__doc__");
-//                if (help.isString()) {
-//                    Py::String doc(help);
-//                    QString    longdoc = QString::fromUtf8(doc.as_string().c_str());
-//                    int        pos     = longdoc.indexOf(QLatin1Char('\n'));
-//                    pos                = qMin(pos, 70);
-//                    if (pos < 0) pos = qMin(longdoc.length(), 70);
-//                    tip.description = stripWhiteSpace(longdoc);
-//                    tip.parameter   = longdoc.left(pos);
-//                }
-//            }
+            if (attrname_qstr == QLatin1String("__doc__") && pyutil::isString(attr)) {
+                py::object help = attr;
+                if (pyutil::isString(help)) {
+                    py::str doc(help);
+                    QString longdoc = QString::fromStdString(doc.cast<std::string>());
+                    int     pos     = longdoc.indexOf(QLatin1Char('\n'));
+                    pos             = qMin(pos, 70);
+                    if (pos < 0) pos = qMin(longdoc.length(), 70);
+                    tip.description = stripWhiteSpace(longdoc);
+                    tip.parameter   = longdoc.left(pos);
+                }
+            }
+            else if (pyutil::hasAttr(attr, "__doc__")) {
+                py::object help = pyutil::getAttr(attr, "__doc__");
+                if (pyutil::isString(help)) {
+                    py::str doc(help);
+                    QString longdoc = QString::fromStdString(doc.cast<std::string>());
+                    int     pos     = longdoc.indexOf(QLatin1Char('\n'));
+                    pos             = qMin(pos, 70);
+                    if (pos < 0) pos = qMin(longdoc.length(), 70);
+                    tip.description = stripWhiteSpace(longdoc);
+                    tip.parameter   = longdoc.left(pos);
+                }
+            }
 
-//            // Do not override existing items
-//            QMap<QString, CallTip>::iterator pos = tips.find(str);
-//            if (pos == tips.end()) tips[str] = tip;
-//        }
-//        catch (Py::Exception& e) {
-//            // Just clear the Python exception
-//            e.clear();
-//        }
-//    }
-//}
+            // Do not override existing items
+            if (!tips.contains(attrname_qstr)) {
+                tips[attrname_qstr] = tip;
+            }
+        }
+        catch (py::error_already_set& e) {
+            // Just clear the Python exception
+            WARNLOG << e.what();
+        }
+    }
+}
 
-// void CallTipsList::extractTipsFromProperties(Py::Object& obj, QMap<QString, CallTip>& tips) const
-//{
-//     auto                    cont      = static_cast<App::PropertyContainerPy*>(obj.ptr());
-//     App::PropertyContainer* container = cont->getPropertyContainerPtr();
-//     // Make sure that the C++ object is alive
-//     if (!container) return;
-//     std::map<std::string, App::Property*> Map;
-//     container->getPropertyMap(Map);
+void CallTipsList::extractTipsFromProperties(py::object& obj, QMap<QString, CallTip>& tips) const
+{
+    //     auto                    cont      = static_cast<App::PropertyContainerPy*>(obj.ptr());
+    //     App::PropertyContainer* container = cont->getPropertyContainerPtr();
+    // Make sure that the C++ object is alive
+    //     if (!container) return;
+    //     std::map<std::string, App::Property*> Map;
+    //     container->getPropertyMap(Map);
 
-//    for (const auto& It : Map) {
-//        CallTip tip;
-//        QString str     = QString::fromLatin1(It.first.c_str());
-//        tip.name        = str;
-//        tip.type        = CallTip::Property;
-//        QString longdoc = QString::fromUtf8(container->getPropertyDocumentation(It.second));
-//        // a point, mesh or shape property
-//        if (It.second->isDerivedFrom(Base::Type::fromName("App::PropertyComplexGeoData"))) {
-//            Py::Object data(It.second->getPyObject(), true);
-//            if (data.hasAttr("__doc__")) {
-//                Py::Object help = data.getAttr("__doc__");
-//                if (help.isString()) {
-//                    Py::String doc(help);
-//                    longdoc = QString::fromUtf8(doc.as_string().c_str());
-//                }
-//            }
-//        }
-//        if (!longdoc.isEmpty()) {
-//            int pos = longdoc.indexOf(QLatin1Char('\n'));
-//            pos     = qMin(pos, 70);
-//            if (pos < 0) pos = qMin(longdoc.length(), 70);
-//            tip.description = stripWhiteSpace(longdoc);
-//            tip.parameter   = longdoc.left(pos);
-//        }
-//        tips[str] = tip;
-//    }
-//}
+    //    for (const auto& It : Map) {
+    //        CallTip tip;
+    //        QString str     = QString::fromLatin1(It.first.c_str());
+    //        tip.name        = str;
+    //        tip.type        = CallTip::Property;
+    //        QString longdoc = QString::fromUtf8(container->getPropertyDocumentation(It.second));
+    //        // a point, mesh or shape property
+    //        if (It.second->isDerivedFrom(Base::Type::fromName("App::PropertyComplexGeoData"))) {
+    //            Py::Object data(It.second->getPyObject(), true);
+    //            if (data.hasAttr("__doc__")) {
+    //                Py::Object help = data.getAttr("__doc__");
+    //                if (help.isString()) {
+    //                    Py::String doc(help);
+    //                    longdoc = QString::fromUtf8(doc.as_string().c_str());
+    //                }
+    //            }
+    //        }
+    //        if (!longdoc.isEmpty()) {
+    //            int pos = longdoc.indexOf(QLatin1Char('\n'));
+    //            pos     = qMin(pos, 70);
+    //            if (pos < 0) pos = qMin(longdoc.length(), 70);
+    //            tip.description = stripWhiteSpace(longdoc);
+    //            tip.parameter   = longdoc.left(pos);
+    //        }
+    //        tips[str] = tip;
+    //    }
+}
 
 void CallTipsList::showTips(const QString& line)
 {
     // search only once
-    static QPixmap type_module_icon = QPixmap(":/Icons/ClassBrowser/type_module.svg");
-    static QPixmap type_class_icon  = QPixmap(":/Icons/ClassBrowser/type_class.svg");
-    static QPixmap method_icon      = QPixmap(":/Icons/ClassBrowser/method.svg");
-    static QPixmap member_icon      = QPixmap(":/Icons/ClassBrowser/member.svg");
-    static QPixmap property_icon    = QPixmap(":/Icons/ClassBrowser/property.svg");
+    //    static QPixmap type_module_icon = QPixmap(":/Icons/ClassBrowser/type_module.svg");
+    //    static QPixmap type_class_icon  = QPixmap(":/Icons/ClassBrowser/type_class.svg");
+    //    static QPixmap method_icon      = QPixmap(":/Icons/ClassBrowser/method.svg");
+    //    static QPixmap member_icon      = QPixmap(":/Icons/ClassBrowser/member.svg");
+    //    static QPixmap property_icon    = QPixmap(":/Icons/ClassBrowser/property.svg");
+    static QPixmap type_module_icon = BitmapFactory().pixmap("ClassBrowser/type_module.svg");
+    static QPixmap type_class_icon  = BitmapFactory().pixmap("ClassBrowser/type_class.svg");
+    static QPixmap method_icon      = BitmapFactory().pixmap("ClassBrowser/method.svg");
+    static QPixmap member_icon      = BitmapFactory().pixmap("ClassBrowser/member.svg");
+    static QPixmap property_icon    = BitmapFactory().pixmap("ClassBrowser/property.svg");
 
     // object is in error state
     static const char* const forbidden_xpm[] = {"8 8 3 1",  ". c None", "# c #ff0000", "a c #ffffff",
@@ -449,69 +341,71 @@ void CallTipsList::showTips(const QString& line)
 
     /// TODO: コメントアウトを解除して動くようにする.
 
-    //    for (QMap<QString, CallTip>::Iterator it = tips.begin(); it != tips.end(); ++it) {
-    //        addItem(it.key());
-    //        QListWidgetItem* item = this->item(this->count() - 1);
-    //        item->setData(Qt::ToolTipRole, QVariant(it.value().description));
-    //        item->setData(Qt::UserRole, QVariant::fromValue(it.value()));    //< store full CallTip data
-    //        switch (it.value().type) {
-    //            case CallTip::Module: {
-    //                item->setIcon((this->validObject ? type_module_icon : forbidden_type_module_icon));
-    //            } break;
-    //            case CallTip::Class: {
-    //                item->setIcon((this->validObject ? type_class_icon : forbidden_type_class_icon));
-    //            } break;
-    //            case CallTip::Method: {
-    //                item->setIcon((this->validObject ? method_icon : forbidden_method_icon));
-    //            } break;
-    //            case CallTip::Member: {
-    //                item->setIcon((this->validObject ? member_icon : forbidden_member_icon));
-    //            } break;
-    //            case CallTip::Property: {
-    //                item->setIcon((this->validObject ? property_icon : forbidden_property_icon));
-    //            } break;
-    //            default:
-    //                break;
-    //        }
-    //    }
+    for (auto&& key : tips.keys()) {
+        const auto tip = tips.value(key);
 
-    //    if (count() == 0) return;    // nothing found
+        addItem(key);
+        QListWidgetItem* item = this->item(this->count() - 1);
+        item->setData(Qt::ToolTipRole, QVariant(tip.description));
+        item->setData(Qt::UserRole, QVariant::fromValue(tip));    //< store full CallTip data
+        switch (tip.type) {
+            case CallTip::Module: {
+                item->setIcon((this->validObject ? type_module_icon : forbidden_type_module_icon));
+            } break;
+            case CallTip::Class: {
+                item->setIcon((this->validObject ? type_class_icon : forbidden_type_class_icon));
+            } break;
+            case CallTip::Method: {
+                item->setIcon((this->validObject ? method_icon : forbidden_method_icon));
+            } break;
+            case CallTip::Member: {
+                item->setIcon((this->validObject ? member_icon : forbidden_member_icon));
+            } break;
+            case CallTip::Property: {
+                item->setIcon((this->validObject ? property_icon : forbidden_property_icon));
+            } break;
+            default:
+                break;
+        }
+    }
 
-    //    // get the minimum width and height of the box
-    //    int h = 0;
-    //    int w = 0;
-    //    for (int i = 0; i < count(); ++i) {
-    //        QRect r = visualItemRect(item(i));
-    //        w       = qMax(w, r.width());
-    //        h += r.height();
-    //    }
+    if (count() == 0) return;    // nothing found
 
-    //    // Add an offset
-    //    w += 2 * frameWidth();
-    //    h += 2 * frameWidth();
+    // get the minimum width and height of the box
+    int h = 0;
+    int w = 0;
+    for (int i = 0; i < count(); ++i) {
+        QRect r = visualItemRect(item(i));
+        w       = qMax(w, r.width());
+        h += r.height();
+    }
 
-    //    // get the start position of the word prefix
-    //    QTextCursor cursor = textEdit->textCursor();
-    //    this->cursorPos    = cursor.position();
-    //    QRect rect         = textEdit->cursorRect(cursor);
-    //    int   posX         = rect.x();
-    //    int   posY         = rect.y();
-    //    int   boxH         = h;
+    // Add an offset
+    w += 2 * frameWidth();
+    h += 2 * frameWidth();
 
-    //    // Decide whether to show downstairs or upstairs
-    //    if (posY > textEdit->viewport()->height() / 2) {
-    //        h = qMin(qMin(h, posY), 250);
-    //        if (h < boxH) w += textEdit->style()->pixelMetric(QStyle::PM_ScrollBarExtent);
-    //        setGeometry(posX, posY - h, w, h);
-    //    }
-    //    else {
-    //        h = qMin(qMin(h, textEdit->viewport()->height() - fontMetrics().height() - posY), 250);
-    //        if (h < boxH) w += textEdit->style()->pixelMetric(QStyle::PM_ScrollBarExtent);
-    //        setGeometry(posX, posY + fontMetrics().height(), w, h);
-    //    }
+    // get the start position of the word prefix
+    QTextCursor cursor = textEdit->textCursor();
+    this->cursorPos    = cursor.position();
+    QRect rect         = textEdit->cursorRect(cursor);
+    int   posX         = rect.x();
+    int   posY         = rect.y();
+    int   boxH         = h;
 
-    //    setCurrentRow(0);
-    //    show();
+    // Decide whether to show downstairs or upstairs
+    if (posY > textEdit->viewport()->height() / 2) {
+        h = qMin(qMin(h, posY), 250);
+        if (h < boxH) w += textEdit->style()->pixelMetric(QStyle::PM_ScrollBarExtent);
+        setGeometry(posX, posY - h, w, h);
+    }
+    else {
+        h = qMin(qMin(h, textEdit->viewport()->height() - fontMetrics().height() - posY), 250);
+        if (h < boxH) w += textEdit->style()->pixelMetric(QStyle::PM_ScrollBarExtent);
+        setGeometry(posX, posY + fontMetrics().height(), w, h);
+    }
+
+    setCurrentRow(0);
+    show();
 }
 
 void CallTipsList::showEvent(QShowEvent* e)
