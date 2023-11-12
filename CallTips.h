@@ -30,7 +30,7 @@ public:
     /// Destruction
     ~CallTipsList() override;
 
-    void keyboardSearch(const QString &) override;
+    void keyboardSearch(const QString &wordPrefix) override;
     void showTips(const QString &);
     void validateCursor();
 
@@ -45,9 +45,9 @@ private Q_SLOTS:
 private:
     QString                extractContext(const QString &) const;
     QMap<QString, CallTip> extractTips(const QString &) const;
-    void                   extractTipsFromObject(py::object &obj, const pybind11::list &list, QMap<QString, CallTip> &tips) const;
-    void                   extractTipsFromProperties(py::object &obj, QMap<QString, CallTip> &tips) const;
-    QString                stripWhiteSpace(const QString &) const;
+    void    extractTipsFromObject(py::object &obj, const pybind11::list &list, QMap<QString, CallTip> &tips) const;
+    void    extractTipsFromProperties(py::object &obj, QMap<QString, CallTip> &tips) const;
+    QString stripWhiteSpace(const QString &) const;
 
 private:
     QPlainTextEdit *textEdit;

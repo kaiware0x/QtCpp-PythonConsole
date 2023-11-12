@@ -2,7 +2,7 @@
 
 Python Bindingを用いてインタープリタのUIを自作する。
 
-FreeCADの`PythonConsole`クラスを参考にしている。
+FreeCADの`PythonConsole`クラスとその周辺クラスを参考にしている。
 
 ## 使用フレームワーク
 
@@ -15,8 +15,9 @@ FreeCADの`PythonConsole`クラスを参考にしている。
 `dir(__builtins__)`で確認できる。
     - https://note.nkmk.me/python-dir-builtins/
 
-CPythonソース末尾のAssertに引っかかってデバッグ実行で落ちる.
+`py::hasattr()`などを呼び出すとき、CPythonソース`Objects/typeobject.c`のAssertに引っかかってデバッグ実行で落ちる.
 API呼び出しの前にPyErr_Clear()を呼んでおくと引っかからなくなる.
+
 ```cpp
 /* Internal API to look for a name through the MRO.
    This returns a borrowed reference, and doesn't set an exception! */
@@ -50,7 +51,28 @@ _PyType_Lookup(PyTypeObject *type, PyObject *name)
 ```
 
 
+### EmbとExtのデバッグ実行に関して
+
+- Python側で予めデバッグ用のEXEとDLLをインストールしておく必要がある。
+    - python312_d.dll
+    - python3_d.dll
+    - python_d.exe
+- リリースビルド版
+- 自作モジュールの名前には末尾に`_d`をつけないと、PATHを通してもImportする際にモジュールが見つからないとエラーが出る。
+    - リリース版自作モジュール名 例：
+        - extend01.cp312-win_amd64.pyd
+    - デバッグ版自作モジュール名 例：
+        - extend01_d.cp312-win_amd64.pyd
+        - Importするときは`_d`なしのモジュール名でImportする。
+
+
 ## 進捗
+
+### 2023-11-12
+
+- 入力補完絞り込みができるようになった。
+- 自作モジュールをImportできるようになった。
+- TODO: より複雑なモジュールを作成する。
 
 ### 2023-11-11
 

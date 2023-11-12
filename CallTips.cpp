@@ -71,6 +71,11 @@ CallTipsList::CallTipsList(QPlainTextEdit* parent)
     compKeys.append(Qt::Key_BracketRight);
     compKeys.append(Qt::Key_BraceLeft);
     compKeys.append(Qt::Key_BraceRight);
+
+    setFrameStyle(QFrame::Box);
+    setFrameShadow(QFrame::Raised);
+    setLineWidth(2);
+    setSelectionMode(QAbstractItemView::SingleSelection);
 }
 
 CallTipsList::~CallTipsList() {}
@@ -170,8 +175,6 @@ QMap<QString, CallTip> CallTipsList::extractTips(const QString& context) const
 
         pyutil::printType(global_dict[module_name_std.c_str()]);
         pyutil::printAttr(global_dict[module_name_std.c_str()]);
-
-        /// TODO: 以下のソースをpybind11で書き換える.
 
         auto obj = py::eval(context.toLatin1().constData());
         if (obj.is_none()) {
@@ -306,11 +309,6 @@ void CallTipsList::extractTipsFromProperties(py::object& obj, QMap<QString, Call
 void CallTipsList::showTips(const QString& line)
 {
     // search only once
-    //    static QPixmap type_module_icon = QPixmap(":/Icons/ClassBrowser/type_module.svg");
-    //    static QPixmap type_class_icon  = QPixmap(":/Icons/ClassBrowser/type_class.svg");
-    //    static QPixmap method_icon      = QPixmap(":/Icons/ClassBrowser/method.svg");
-    //    static QPixmap member_icon      = QPixmap(":/Icons/ClassBrowser/member.svg");
-    //    static QPixmap property_icon    = QPixmap(":/Icons/ClassBrowser/property.svg");
     static QPixmap type_module_icon = BitmapFactory().pixmap("ClassBrowser/type_module.svg");
     static QPixmap type_class_icon  = BitmapFactory().pixmap("ClassBrowser/type_class.svg");
     static QPixmap method_icon      = BitmapFactory().pixmap("ClassBrowser/method.svg");
@@ -519,7 +517,7 @@ void CallTipsList::callTipItemActivated(QListWidgetItem* item)
     if (!sel.isEmpty()) {
         // in case the cursor moved too far on the right side
         const QChar underscore = QLatin1Char('_');
-        const QChar ch         = sel.at(sel.count() - 1);
+        const QChar ch         = sel.at(sel.length() - 1);
         if (!ch.isLetterOrNumber() && ch != underscore) cursor.movePosition(QTextCursor::Left, QTextCursor::KeepAnchor);
     }
     cursor.insertText(text);
@@ -535,8 +533,8 @@ void CallTipsList::callTipItemActivated(QListWidgetItem* item)
          * Try to find out if call needs arguments.
          * For this we search the description for appropriate hints ...
          */
-        QRegularExpression argumentMatcher(QRegularExpression::escape(callTip.name)
-                                           + QLatin1String("\\s*\\(\\s*\\w+.*\\)"));
+        static QRegularExpression argumentMatcher(QRegularExpression::escape(callTip.name)
+                                                  + QLatin1String("\\s*\\(\\s*\\w+.*\\)"));
         argumentMatcher.setPatternOptions(QRegularExpression::InvertedGreedinessOption);    //< set regex non-greedy!
         if (argumentMatcher.match(callTip.description).hasMatch()) {
             // if arguments are needed, we just move the cursor one left, to between the parentheses.
@@ -563,16 +561,16 @@ QString CallTipsList::stripWhiteSpace(const QString& str) const
     int         line     = 0;
 
     for (QStringList::iterator it = lines.begin(); it != lines.end(); ++it, ++line) {
-        if (it->count() > 0 && line > 0) {
+        if (it->length() > 0 && line > 0) {
             int space = 0;
-            for (int i = 0; i < it->count(); i++) {
+            for (int i = 0; i < it->length(); i++) {
                 if ((*it)[i] == QLatin1Char('\t'))
                     space++;
                 else
                     break;
             }
 
-            if (it->count() > space) minspace = std::min<int>(minspace, space);
+            if (it->length() > space) minspace = std::min<int>(minspace, space);
         }
     }
 
@@ -584,7 +582,7 @@ QString CallTipsList::stripWhiteSpace(const QString& str) const
             if (line == 0 && !it->isEmpty()) {
                 strippedlines << *it;
             }
-            else if (it->count() > 0 && line > 0) {
+            else if (it->length() > 0 && line > 0) {
                 strippedlines << it->mid(minspace);
             }
         }

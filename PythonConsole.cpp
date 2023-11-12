@@ -1,7 +1,11 @@
 #include "PythonConsole.h"
 
+#include "IncludePybind11.h"
+
 #include "CallTips.h"
 #include "PyStdoutRedirector.h"
+#include "PythonConsoleHistory.h"
+#include "PythonSyntaxHighlighter.h"
 
 #include <QCoreApplication>
 #include <QDockWidget>
@@ -11,11 +15,11 @@
 namespace {
 static const auto      PROMPT      = QString::fromLatin1(">>> ");
 static const auto      PROMPT_CONT = QString::fromLatin1("... ");
-static constexpr QChar promptEnd(QLatin1Char(' '));    //< char for detecting prompt end
+static constexpr QChar PROMPT_END(QLatin1Char(' '));    //< char for detecting prompt end
 
 inline int promptLength(const QString &lineStr)
 {
-    return lineStr.indexOf(promptEnd) + 1;
+    return lineStr.indexOf(PROMPT_END) + 1;
 }
 
 /**
@@ -58,12 +62,49 @@ std::string pyobj2str(py::object pyobj)
 }
 }    // namespace
 
+/**
+ * Syntax highlighter for Python console.
+ * @author Werner Mayer
+ */
+class PythonConsoleHighlighter : public PythonSyntaxHighlighter {
+public:
+    explicit PythonConsoleHighlighter(QObject *parent);
+    ~PythonConsoleHighlighter() override;
+
+    void highlightBlock(const QString &text) override;
+
+protected:
+    void colorChanged(const QString &type, const QColor &col) override {}
+};
+
+/**
+ * @brief The PythonConsoleP class
+ */
 struct PythonConsoleP {
+    PythonConsoleP(PythonConsole *q)
+        : interpreter(std::make_unique<py::scoped_interpreter>())
+        , sys(py::module::import("sys"))
+        , callTipsList(new CallTipsList(q))
+        , pythonSyntax(new PythonConsoleHighlighter(q))
+    {
+        pythonSyntax->setDocument(q->document());
+
+        /// 実行ファイルディレクトリをモジュールパスに追加.
+        /// 自作モジュールをImportできるようになる.
+        //        py::cast<py::list>(sys.attr("path")).append(qApp->applicationDirPath().toStdString());
+    }
+
+    std::unique_ptr<py::scoped_interpreter> interpreter;
+    py::module_                             sys;
+
     enum Output { Error = 20, Message = 21 };
     PythonConsoleHistory history;
     QString              info;
     CallTipsList        *callTipsList;
-    PythonConsoleP() {}
+
+    QString *_sourceDrain = nullptr;
+
+    PythonConsoleHighlighter *pythonSyntax;
 };
 
 ///---------------------------------------------------------
@@ -74,23 +115,10 @@ struct PythonConsoleP {
  * @brief PythonConsole::PythonConsole
  * @param parent
  */
-PythonConsole::PythonConsole(QWidget *parent)
-    : TextEdit(parent)
-    , d(new PythonConsoleP)
-    , m_interpreter(std::make_unique<py::scoped_interpreter>())
-    , m_sys(py::module::import("sys"))
-    , pythonSyntax(new PythonConsoleHighlighter(this))
+PythonConsole::PythonConsole(QWidget *parent) : TextEdit(parent), d(new PythonConsoleP(this))
 {
-    pythonSyntax->setDocument(this->document());
-
-    // create the window for call tips
-    d->callTipsList = new CallTipsList(this);
-    d->callTipsList->setFrameStyle(QFrame::Box);
-    d->callTipsList->setFrameShadow(QFrame::Raised);
-    d->callTipsList->setLineWidth(2);
     installEventFilter(d->callTipsList);
     viewport()->installEventFilter(d->callTipsList);
-    d->callTipsList->setSelectionMode(QAbstractItemView::SingleSelection);
     d->callTipsList->hide();
 
     const char *version  = PyUnicode_AsUTF8(PySys_GetObject("version"));
@@ -104,6 +132,11 @@ PythonConsole::PythonConsole(QWidget *parent)
 
     textCursor().block().setUserState(0);    /// 1行目にSyntaxHighlightが効くようにする.
     insertPrompt();
+}
+
+PythonConsole::~PythonConsole()
+{
+    delete d;
 }
 
 void PythonConsole::keyPressEvent(QKeyEvent *e)
@@ -183,16 +216,16 @@ void PythonConsole::keyPressEvent(QKeyEvent *e)
 
             case Qt::Key_Up: {
                 // if possible, move back in history
-                if (m_history.prev(inputStriptedText)) {
-                    overrideCursor(m_history.value());
+                if (d->history.prev(inputStriptedText)) {
+                    overrideCursor(d->history.value());
                 }
                 restartHistory = false;
                 break;
             }
             case Qt::Key_Down: {
                 // if possible, move forward in history
-                if (m_history.next()) {
-                    overrideCursor(m_history.value());
+                if (d->history.next()) {
+                    overrideCursor(d->history.value());
                 }
                 restartHistory = false;
                 break;
@@ -228,13 +261,19 @@ void PythonConsole::keyPressEvent(QKeyEvent *e)
             }
         }
 
+        /// This can't be done in CallTipsList::eventFilter() because we must first perform
+        /// the event and afterwards update the list widget
+        if (d->callTipsList->isVisible()) {
+            d->callTipsList->validateCursor();
+        }
+
         /// disable history restart if input line changed
         restartHistory &= (inputStriptedText != inputBlockText);
     }
 
     /// any cursor move resets the history to its latest item.
     if (restartHistory) {
-        m_history.restart();
+        d->history.restart();
     }
 }
 
@@ -277,8 +316,8 @@ QTextCursor PythonConsole::inputBegin() const
     inputLineBegin.movePosition(QTextCursor::StartOfBlock);
     // ... and move cursor right beyond the prompt.
     int prompt_len = promptLength(inputLineBegin.block().text());
-    if (this->_sourceDrain && !this->_sourceDrain->isEmpty()) {
-        prompt_len = this->_sourceDrain->length();
+    if (d->_sourceDrain && !d->_sourceDrain->isEmpty()) {
+        prompt_len = d->_sourceDrain->length();
     }
     inputLineBegin.movePosition(QTextCursor::Right, QTextCursor::MoveAnchor, prompt_len);
     return inputLineBegin;
@@ -286,7 +325,7 @@ QTextCursor PythonConsole::inputBegin() const
 
 void PythonConsole::runSource(const QString &line)
 {
-    m_history.append(line);
+    d->history.append(line);
 
     PyStdErrOutStreamRedirect redirector;
     py::gil_scoped_acquire    lock;
