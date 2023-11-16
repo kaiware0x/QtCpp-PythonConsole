@@ -1,12 +1,22 @@
 project(mymod LANGUAGES CXX)
 
-find_package(Python COMPONENTS Interpreter Development REQUIRED)
-find_package(pybind11 CONFIG REQUIRED)
+findPybind11ForExtend()
+
+getSrcFiles()
 
 pybind11_add_module(${PROJECT_NAME}
-    main.cpp
+    ${SOURCES}
+    ${HEADERS}
+#    ${FORMS}
+#    ${RESOURCES}
 )
 
-my_link_python(${PROJECT_NAME})
+linkPython(${PROJECT_NAME})
+setOutputDir(${PROJECT_NAME})
 
-my_set_output_bin_dir(${PROJECT_NAME})
+set_target_properties(${PROJECT_NAME}
+    PROPERTIES
+    ARCHIVE_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/lib"
+    LIBRARY_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin" # .pyd destination
+    RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin"
+)

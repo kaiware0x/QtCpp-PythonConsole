@@ -1,7 +1,7 @@
 
 
-# my_get_source_filesを実行したあとに呼ぶ。
-macro(my_exclude_source_files DIR_NAME)
+# getSrcFilesを実行したあとに呼ぶ。
+macro(excludeSrcDir DIR_NAME)
     # deprecatedフォルダ以下のソースは除外する
     list(FILTER SOURCES   EXCLUDE REGEX "^${DIR_NAME}/.*")
     list(FILTER HEADERS   EXCLUDE REGEX "^${DIR_NAME}/.*")
@@ -11,7 +11,7 @@ endmacro()
 
 
 # @brief: macro呼び出し元のCMakeLists.txt直下のソールファイルパスを取得する.
-macro(my_get_source_files)
+macro(getSrcFiles)
     # 直下のソースファイル群を取得する
     file(GLOB_RECURSE SOURCES     RELATIVE ${PROJECT_SOURCE_DIR} *.cpp)
     file(GLOB_RECURSE SOURCES_CXX RELATIVE ${PROJECT_SOURCE_DIR} *.cxx)
@@ -38,10 +38,12 @@ macro(my_get_source_files)
     unset(HEADERS_CUH)
 
     # deprecatedフォルダ以下のソースは除外する
-    my_exclude_source_files(deprecated)
+    excludeSrcDir(deprecated)
 endmacro()
 
-function(my_set_output_bin_dir target)
+
+#
+function(setOutputDir target)
     set_target_properties(${target}
         PROPERTIES
         ARCHIVE_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/lib"
@@ -51,7 +53,38 @@ function(my_set_output_bin_dir target)
 endfunction()
 
 
-function(my_link_python target)
+# Get python executable file directory e.g. "C:/Python/Python312/"
+function(getPythonExeDir)
+    message(STATUS "Call getPythonExeDir()")
+
+    cmake_path(GET PYTHON_EXECUTABLE PARENT_PATH MY_PYTHON_BIN_DIR)
+    set(MY_PYTHON_BIN_DIR ${MY_PYTHON_BIN_DIR} PARENT_SCOPE)
+    message(STATUS "MY_PYTHON_BIN_DIR: ${MY_PYTHON_BIN_DIR}")
+endfunction()
+
+
+# Get file name e.g. "python312" or "python312_d"
+function(getPythonLibName)
+    message(STATUS "Call getPythonLibName()")
+
+    if (CMAKE_BUILD_TYPE STREQUAL "Debug")
+        list(GET Python_LIBRARIES 3 MY_PYTHON_LIB_PATH)
+    else()
+        list(GET Python_LIBRARIES 1 MY_PYTHON_LIB_PATH)
+    endif()
+    message(STATUS "MY_PYTHON_LIB_PATH: ${MY_PYTHON_LIB_PATH}")
+
+    # Get file name e.g. "python312" or "python312_d"
+    cmake_path(GET MY_PYTHON_LIB_PATH STEM MY_PYTHON_LIB_NAME)
+    set(MY_PYTHON_LIB_NAME ${MY_PYTHON_LIB_NAME} PARENT_SCOPE) # Set to parent scope
+    message(STATUS "MY_PYTHON_LIB_NAME: ${MY_PYTHON_LIB_NAME}")
+endfunction()
+
+
+#
+function(linkPython target)
+    message(STATUS "Call linkPython(${target})")
+
     find_package(Python COMPONENTS Interpreter Development REQUIRED)
 
     message(STATUS "Python_FOUND:           ${Python_FOUND}")
@@ -61,30 +94,26 @@ function(my_link_python target)
     message(STATUS "Python_LIBRARIES:       ${Python_LIBRARIES}")
     message(STATUS "PYTHON_INCLUDE_DIRS:    ${PYTHON_INCLUDE_DIRS}")
 
-    if (CMAKE_BUILD_TYPE STREQUAL "Debug")
-        list(GET Python_LIBRARIES 3 MY_PYTHON_LIB_PATH)
-    else()
-        list(GET Python_LIBRARIES 1 MY_PYTHON_LIB_PATH)
-    endif()
-    message(STATUS "MY_PYTHON_LIB_PATH: ${MY_PYTHON_LIB_PATH}")
-
-    # Get file name e.g. "python312" or "python312_d"
-    cmake_path(GET MY_PYTHON_LIB_PATH STEM MY_PYTHON_LIB_NAME)
-    message(STATUS "MY_PYTHON_LIB_NAME: ${MY_PYTHON_LIB_NAME}")
-
-    # Get python executable file directory e.g. "C:/Python/Python312/"
-    cmake_path(GET PYTHON_EXECUTABLE PARENT_PATH MY_PYTHON_BIN_DIR)
-    message(STATUS "MY_PYTHON_BIN_DIR: ${MY_PYTHON_BIN_DIR}")
 
     target_link_directories(${target} PRIVATE
         ${Python_LIBRARY_DIRS}
     )
+    getPythonLibName()
     target_link_libraries(${target} PRIVATE
         ${MY_PYTHON_LIB_NAME}
     )
     target_include_directories(${target} PRIVATE
         ${PYTHON_INCLUDE_DIRS}
     )
+endfunction()
+
+
+# Copy python runtime libraries.
+function(copyPythonSharedLib target)
+    message(STATUS "Call copyPythonSharedLib()")
+
+    getPythonLibName()
+    getPythonExeDir()
 
     add_custom_command(TARGET ${target} POST_BUILD
         COMMAND ${CMAKE_COMMAND} -E copy
@@ -94,40 +123,62 @@ function(my_link_python target)
 endfunction()
 
 
+
 # You must this argument to cmake configure command if you installed pybind11 by vcpkg.
 # -DCMAKE_TOOLCHAIN_FILE=C:/vcpkg/scripts/buildsystems/vcpkg.cmake
-function(my_link_pybind11_embed target)
+function(linkPybind11ForEmbed target)
     find_package(pybind11 CONFIG REQUIRED)
     target_link_libraries(${target} PRIVATE pybind11::embed)
 endfunction()
 
-function(my_link_pybind11_extend)
+
+#
+function(findPybind11ForExtend)
     find_package(Python COMPONENTS Interpreter Development REQUIRED)
     find_package(pybind11 CONFIG REQUIRED)
-endfunction()
-
-function(my_copy_python_shared_lib target)
-    message(STATUS "my_copy_python_shared_lib")
-    message(STATUS "PYTHON_EXECUTABLE:      ${PYTHON_EXECUTABLE}")
 
     if (CMAKE_BUILD_TYPE STREQUAL "Debug")
-        list(GET Python_LIBRARIES 3 MY_PYTHON_LIB_PATH)
+        set(PYTHON_MODULE_EXTENSION "_d.pyd" CACHE STRING "Built python module custom extension" FORCE)
     else()
-        list(GET Python_LIBRARIES 1 MY_PYTHON_LIB_PATH)
+        set(PYTHON_MODULE_EXTENSION ".pyd" CACHE STRING "Built python module custom extension" FORCE)
     endif()
-    message(STATUS "MY_PYTHON_LIB_PATH: ${MY_PYTHON_LIB_PATH}")
+endfunction()
 
-    # Get file name e.g. "python312" or "python312_d"
-    cmake_path(GET MY_PYTHON_LIB_PATH STEM MY_PYTHON_LIB_NAME)
-    message(STATUS "MY_PYTHON_LIB_NAME: ${MY_PYTHON_LIB_NAME}")
 
-    # Get python executable file directory e.g. "C:/Python/Python312/"
-    cmake_path(GET PYTHON_EXECUTABLE PARENT_PATH MY_PYTHON_BIN_DIR)
-    message(STATUS "MY_PYTHON_BIN_DIR: ${MY_PYTHON_BIN_DIR}")
+##
+#function(linkPybind11ForExtend target)
+#    # pybind11 method:
+#    # pybind11_add_module(${target} src1.cpp)
 
-    add_custom_command(TARGET ${target} POST_BUILD
-        COMMAND ${CMAKE_COMMAND} -E copy
-            "${MY_PYTHON_BIN_DIR}/${MY_PYTHON_LIB_NAME}.dll"
-            $<TARGET_FILE_DIR:${target}>
+#    # Python method:
+#    # Python_add_library(${target} src2.cpp)
+
+#    target_link_libraries(${target} PRIVATE
+#        pybind11::headers
+#        pybind11::module
+#    )
+#    set_target_properties(${target} PROPERTIES
+#        INTERPROCEDURAL_OPTIMIZATION ON
+#        CXX_VISIBILITY_PRESET ON
+#        VISIBILITY_INLINES_HIDDEN ON
+#    )
+#endfunction()
+
+
+# You need to install OpenCASCADE using this command:
+#   $ vcpkg install opencascade
+function(linkOpenCASCADE target)
+    # this is heuristically generated, and may not be correct
+    find_package(OpenCASCADE CONFIG REQUIRED)
+
+    message(STATUS "OpenCASCADE_FOUND:  ${OpenCASCADE_FOUND}")
+    message(STATUS "OpenCASCADE_DIR:    ${OpenCASCADE_DIR}")
+
+    # note: 47 additional targets are not displayed.
+    target_link_libraries(${target} PRIVATE
+        TKBO
+        TKBin
+        TKCAF
+        TKCDF
     )
 endfunction()

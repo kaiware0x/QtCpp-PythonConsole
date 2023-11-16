@@ -18,8 +18,8 @@ set(CMAKE_INCLUDE_CURRENT_DIR ON)
 find_package(QT NAMES Qt6 Qt5 REQUIRED COMPONENTS Widgets Svg)
 find_package(Qt${QT_VERSION_MAJOR} REQUIRED COMPONENTS Widgets Svg)
 
-my_get_source_files()
-my_exclude_source_files(MyPyModule)
+getSrcFiles()
+excludeSrcDir(mymod)
 
 qt_add_executable(${PROJECT_NAME} MANUAL_FINALIZATION
     ${SOURCES}
@@ -41,8 +41,8 @@ set_target_properties(${PROJECT_NAME} PROPERTIES
 
 qt_finalize_executable(${PROJECT_NAME})
 
-my_set_output_bin_dir(${PROJECT_NAME})
-my_link_pybind11_embed(${PROJECT_NAME})
-my_link_python(${PROJECT_NAME})
+setOutputDir(${PROJECT_NAME})
+linkPybind11ForEmbed(${PROJECT_NAME})
+linkPython(${PROJECT_NAME})
 
 add_subdirectory(mymod/)
