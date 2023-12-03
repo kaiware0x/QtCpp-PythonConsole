@@ -1,9 +1,7 @@
 #ifndef MAINWINDOW_H
 #define MAINWINDOW_H
 
-#include "PythonConsole.h"
-
-#include <iostream>
+#include "PythonConsole/PythonConsole.h"
 
 #include <QMainWindow>
 
@@ -23,6 +21,7 @@ public:
 private:
     Ui::MainWindow *ui;
 
-    PythonConsole *m_py_console;
+    QDockWidget   *m_py_console_dock{nullptr};
+    PythonConsole *m_py_console{nullptr};
 };
 #endif    // MAINWINDOW_H

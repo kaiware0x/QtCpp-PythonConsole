@@ -1,8 +1,6 @@
 cmake_minimum_required(VERSION 3.5)
 
-project(MainGUI VERSION 0.1 LANGUAGES CXX)
-
-include(Utility.cmake)
+project(PythonConsole VERSION 0.1 LANGUAGES CXX)
 
 set(CMAKE_AUTOUIC ON)
 set(CMAKE_AUTOMOC ON)
@@ -16,33 +14,24 @@ find_package(QT NAMES Qt6 Qt5 REQUIRED COMPONENTS Widgets Svg)
 find_package(Qt${QT_VERSION_MAJOR} REQUIRED COMPONENTS Widgets Svg)
 
 getSrcFiles() # Utility.cmake
-excludeSrcDir(mymod) # Utility.cmake
-excludeSrcDir(PythonConsole) # Utility.cmake
 
-qt_add_executable(${PROJECT_NAME} MANUAL_FINALIZATION
+add_library(${PROJECT_NAME} SHARED
     ${SOURCES}
     ${HEADERS}
-    ${FORMS}
     ${RESOURCES}
-    README.md
 )
 
 target_link_libraries(${PROJECT_NAME} PRIVATE
     Qt${QT_VERSION_MAJOR}::Widgets
     Qt${QT_VERSION_MAJOR}::Svg
-    PythonConsole
 )
 
-set_target_properties(${PROJECT_NAME} PROPERTIES
-    ${BUNDLE_ID_OPTION}
-    WIN32_EXECUTABLE TRUE
+
+target_compile_definitions(${PROJECT_NAME} PRIVATE
+    PYTHON_CONSOLE_LIBRARY
 )
 
-qt_finalize_executable(${PROJECT_NAME})
 
 setOutputDir(${PROJECT_NAME}) # Utility.cmake
 linkPybind11ForEmbed(${PROJECT_NAME}) # Utility.cmake
 linkPython(${PROJECT_NAME}) # Utility.cmake
-
-add_subdirectory(PythonConsole/)
-add_subdirectory(mymod/)

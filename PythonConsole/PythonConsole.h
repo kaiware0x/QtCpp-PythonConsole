@@ -1,9 +1,10 @@
 #ifndef PYTHONCONSOLE_H
 #define PYTHONCONSOLE_H
 
+#include "PythonConsole_global.h"
 #include "TextEdit.h"
 
-class PythonConsole : public TextEdit {
+class PYTHON_CONSOLE_EXPORT PythonConsole : public TextEdit {
 public:
     enum Prompt { Complete = 0, Incomplete = 1, Flush = 2, Special = 3 };
 

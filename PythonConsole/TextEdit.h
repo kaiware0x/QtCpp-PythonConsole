@@ -4,6 +4,8 @@
 #include <QPlainTextEdit>
 #include <QTextEdit>
 
+#include "PythonConsole_global.h"
+
 /**
  * Completion is a means by which an editor automatically completes words that the user is typing.
  * For example, in a code editor, a programmer might type "sur", then Tab, and the editor will complete
@@ -22,7 +24,7 @@
  * @author Werner Mayer
  */
 class CompletionList;
-class TextEdit : public QPlainTextEdit {
+class PYTHON_CONSOLE_EXPORT TextEdit : public QPlainTextEdit {
     Q_OBJECT
 
 public:
