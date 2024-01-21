@@ -171,14 +171,28 @@ function(linkOpenCASCADE target)
     # this is heuristically generated, and may not be correct
     find_package(OpenCASCADE CONFIG REQUIRED)
 
-    message(STATUS "OpenCASCADE_FOUND:  ${OpenCASCADE_FOUND}")
-    message(STATUS "OpenCASCADE_DIR:    ${OpenCASCADE_DIR}")
+    message(STATUS "OpenCASCADE_FOUND:      ${OpenCASCADE_FOUND}")
+    message(STATUS "OpenCASCADE_DIR:        ${OpenCASCADE_DIR}")
+    message(STATUS "OpenCASCADE_CONFIG:     ${OpenCASCADE_CONFIG}")
+    message(STATUS "OpenCASCADE_INCLUDE_DIR:${OpenCASCADE_INCLUDE_DIR}")
+    message(STATUS "OpenCASCADE_LIBRARY_DIR:${OpenCASCADE_LIBRARY_DIR}")
+    message(STATUS "OpenCASCADE_BINARY_DIR: ${OpenCASCADE_BINARY_DIR}")
+    message(STATUS "OpenCASCADE_LIBRARIES:  ${OpenCASCADE_LIBRARIES}")
+
+    target_include_directories(${target} PRIVATE
+        ${OpenCASCADE_INCLUDE_DIR}
+    )
+
+    target_link_directories(${target} PRIVATE
+        ${OpenCASCADE_LIBRARY_DIR}
+    )
 
     # note: 47 additional targets are not displayed.
     target_link_libraries(${target} PRIVATE
-        TKBO
-        TKBin
-        TKCAF
-        TKCDF
+        ${OpenCASCADE_LIBRARIES}
+#        TKBO
+#        TKBin
+#        TKCAF
+#        TKCDF
     )
 endfunction()

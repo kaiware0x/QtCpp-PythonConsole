@@ -1,5 +1,7 @@
 #include <pybind11/pybind11.h>
 
+#include "CadFileReader.h"
+
 namespace py = pybind11;
 
 int add(int i, int j)
@@ -38,4 +40,12 @@ PYBIND11_MODULE(mymod, m)
     m.attr("the_answer") = 42;
     py::object world     = py::cast("World");
     m.attr("what")       = world;
+
+    ///---------------------------------------------------------
+    /// クラスのExport
+    ///---------------------------------------------------------
+    py::class_<CadFileReader>(m, "CadFileReader")
+        .def(py::init<>())
+        .def("readStep", &CadFileReader::readStep)
+        .def("readStl", &CadFileReader::readStl);
 }
